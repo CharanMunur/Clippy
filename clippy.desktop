@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Clippy
+Comment=A native clipboard manager for GNOME/Linux
+Exec=clippy
+Icon=clippy
+Terminal=false
+Categories=Utility;GTK;
+Keywords=clipboard;copy;paste;history;
+StartupNotify=false
+StartupWMClass=org.gnome.Clippy

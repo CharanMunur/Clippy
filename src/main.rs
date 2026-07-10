@@ -58,10 +58,12 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
     let card = Box::new(Orientation::Horizontal, 0);
     card.add_css_class("card");
     card.set_hexpand(true);
+    card.set_tooltip_text(Some("Click to copy"));
+    card.set_cursor_from_name(Some("pointer"));
     if entry.text_content.is_some() {
         card.set_height_request(98); // Enforce fixed height for text items
     } else {
-        card.set_height_request(120); // Cap image cards to prevent window expansion
+        card.set_height_request(110); // Cap image cards to prevent window expansion
     }
 
     // Left column: content
@@ -90,7 +92,7 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
         left_col.append(&label);
     } else if let Some(path) = &entry.image_path {
         let picture = Picture::for_filename(path);
-        picture.set_height_request(110);
+        picture.set_height_request(100);
         picture.set_can_shrink(true);
         picture.set_halign(gtk::Align::Start);
         left_col.append(&picture);
@@ -175,18 +177,9 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
 
     let action_box = Box::new(Orientation::Horizontal, 0);
     action_box.set_valign(gtk::Align::Fill);
-    action_box.set_margin_start(0);
+    action_box.set_margin_start(4); // 4px gap between card and action buttons
 
-    let copy_btn = Button::builder()
-        .icon_name("edit-copy-symbolic")
-        .tooltip_text("Copy to clipboard")
-        .valign(gtk::Align::Fill)
-        .halign(gtk::Align::Fill)
-        .build();
-    copy_btn.add_css_class("card");
-    copy_btn.set_width_request(84);
-
-    // Define delete_btn first so it can be captured in copy_btn's closure
+    // Define delete_btn first
     let delete_btn = Button::builder()
         .icon_name("user-trash-symbolic")
         .tooltip_text("Delete entry")
@@ -194,25 +187,33 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
         .halign(gtk::Align::Fill)
         .build();
     delete_btn.add_css_class("card");
-    delete_btn.add_css_class("error");
     delete_btn.set_width_request(84);
 
-    // Wire copy_btn: copy content then close action panel
+    // Left click on item copies directly and refreshes list instantly
+    let gesture = gtk::GestureClick::new();
     let entry_clone = entry.clone();
-    let action_revealer_clone2 = action_revealer.clone();
-    let card_clone2 = card.clone();
-    let copy_btn_clone2 = copy_btn.clone();
-    let delete_btn_clone2 = delete_btn.clone();
-    let more_btn_clone2 = more_btn.clone();
-    copy_btn.connect_clicked(move |_| {
-        copy_to_clipboard(&entry_clone);
-        // Close back the panel on successful copy
-        action_revealer_clone2.set_reveal_child(false);
-        card_clone2.remove_css_class("card-revealed");
-        copy_btn_clone2.remove_css_class("btn-copy-revealed");
-        delete_btn_clone2.remove_css_class("btn-delete-revealed");
-        more_btn_clone2.remove_css_class("suggested-action");
+    let list_box_clone_copy = list_box.clone();
+    let stack_clone_copy = stack.clone();
+    let search_entry_clone_copy = search_entry.clone();
+    gesture.connect_released(move |gesture, _, _, _| {
+        if gesture.current_button() == gtk::gdk::BUTTON_PRIMARY {
+            copy_to_clipboard(&entry_clone);
+            
+            // Instantly update database and refresh UI
+            if let Ok(conn) = db::init_db() {
+                let hash = entry_clone.content_hash.clone();
+                let _ = db::insert_entry(
+                    &conn,
+                    entry_clone.kind,
+                    entry_clone.text_content.as_deref(),
+                    entry_clone.image_path.as_deref(),
+                    &hash,
+                );
+                refresh_list(&list_box_clone_copy, &stack_clone_copy, &search_entry_clone_copy);
+            }
+        }
     });
+    card.add_controller(gesture);
 
     let main_revealer_clone = main_revealer.clone();
     let list_box_clone = list_box.clone();
@@ -233,7 +234,6 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
         });
     });
 
-    action_box.append(&copy_btn);
     action_box.append(&delete_btn);
     action_revealer.set_child(Some(&action_box));
     row_container.append(&action_revealer);
@@ -242,7 +242,6 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
     let action_revealer_clone = action_revealer.clone();
     let more_btn_clone = more_btn.clone();
     let card_clone = card.clone();
-    let copy_btn_clone = copy_btn.clone();
     let delete_btn_clone = delete_btn.clone();
     let list_box_clone = list_box.clone();
     more_btn.connect_clicked(move |_| {
@@ -309,19 +308,16 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
             let h = card_clone.height();
             
             // Set button width = card height → perfect squares
-            copy_btn_clone.set_width_request(h);
             delete_btn_clone.set_width_request(h);
             
             // Apply capsule corner styling
             card_clone.add_css_class("card-revealed");
-            copy_btn_clone.add_css_class("btn-copy-revealed");
             delete_btn_clone.add_css_class("btn-delete-revealed");
         } else {
             more_btn_clone.remove_css_class("suggested-action");
             
             // Revert capsule corner styling
             card_clone.remove_css_class("card-revealed");
-            copy_btn_clone.remove_css_class("btn-copy-revealed");
             delete_btn_clone.remove_css_class("btn-delete-revealed");
         }
     });
@@ -419,11 +415,18 @@ fn main() {
             eprintln!("Failed to initialize database: {}", e);
         }
 
-        // Add our custom icons directory to search path to override view-pin-symbolic using absolute path
-        if let Ok(mut cwd) = std::env::current_dir() {
-            cwd.push("icons");
-            if let Some(display) = gtk::gdk::Display::default() {
-                let icon_theme = gtk::IconTheme::for_display(&display);
+        // Add custom icons search path — installed location + dev fallback
+        if let Some(display) = gtk::gdk::Display::default() {
+            let icon_theme = gtk::IconTheme::for_display(&display);
+            // Installed: ~/.local/share/clippy/icons
+            if let Some(proj) = directories::ProjectDirs::from("com", "clippy", "clippy") {
+                let mut data = proj.data_dir().to_path_buf();
+                data.push("icons");
+                icon_theme.add_search_path(&data);
+            }
+            // Dev fallback: <project_root>/icons
+            if let Ok(mut cwd) = std::env::current_dir() {
+                cwd.push("icons");
                 icon_theme.add_search_path(&cwd);
             }
         }
@@ -456,10 +459,49 @@ fn main() {
                 border-bottom-right-radius: 0px;
             }
             button.card.btn-delete-revealed {
+                background-color: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                color: rgba(255, 255, 255, 0.6);
                 border-top-left-radius: 0px;
                 border-bottom-left-radius: 0px;
                 border-top-right-radius: 6px;
                 border-bottom-right-radius: 6px;
+                box-shadow: none;
+                transition: border-color 0.2s, color 0.2s;
+            }
+            button.card.btn-delete-revealed:hover {
+                background-color: rgba(255, 255, 255, 0.08);
+                border-color: alpha(@accent_color, 0.4);
+                color: @accent_color;
+            }
+            button.card.btn-delete-revealed:active {
+                background-color: rgba(255, 255, 255, 0.04);
+            }
+            .clear-all-btn {
+                background-color: @accent_bg_color;
+                color: @accent_fg_color;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-weight: 500;
+                border: none;
+            }
+            .clear-all-btn:hover {
+                background-color: @accent_bg_color;
+                color: @accent_fg_color;
+                opacity: 0.9;
+            }
+            .clear-all-btn:active {
+                opacity: 0.8;
+            }
+            button.suggested-action, button.flat.suggested-action {
+                background-color: transparent;
+                color: @accent_color;
+                border: none;
+                box-shadow: none;
+            }
+            button.suggested-action:hover, button.flat.suggested-action:hover {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: @accent_color;
             }
             "
         );
@@ -552,8 +594,7 @@ fn main() {
             .valign(gtk::Align::Center)
             .tooltip_text("Clear all unpinned entries")
             .build();
-        clear_all_btn.add_css_class("flat");
-        clear_all_btn.add_css_class("dim-label");
+        clear_all_btn.add_css_class("clear-all-btn");
 
         let spacer = Box::new(Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
@@ -643,12 +684,26 @@ fn main() {
         });
 
         // Set up the click handler on row activation to copy back to clipboard
+        let list_box_clone_act = list_box.clone();
+        let stack_clone_act = stack.clone();
+        let search_entry_clone_act = search_entry.clone();
         list_box.connect_row_activated(move |_, row| {
             if let Ok(id) = row.widget_name().parse::<i64>() {
                 if let Ok(conn) = db::init_db() {
                     if let Ok(entries) = db::get_entries(&conn, None) {
                         if let Some(entry) = entries.iter().find(|e| e.id == id) {
                             copy_to_clipboard(entry);
+                            
+                            // Instantly update database and refresh UI
+                            let hash = entry.content_hash.clone();
+                            let _ = db::insert_entry(
+                                &conn,
+                                entry.kind,
+                                entry.text_content.as_deref(),
+                                entry.image_path.as_deref(),
+                                &hash,
+                            );
+                            refresh_list(&list_box_clone_act, &stack_clone_act, &search_entry_clone_act);
                         }
                     }
                 }

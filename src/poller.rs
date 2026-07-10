@@ -4,6 +4,7 @@ use std::sync::mpsc::Sender;
 use sha2::{Digest, Sha256};
 use image::{ImageBuffer, Rgba};
 use crate::db::{self, EntryKind};
+use chrono::{DateTime, Utc};
 
 fn compute_text_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
@@ -44,26 +45,45 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
             }
         };
 
-        // Initialize the last seen hash from the latest entry in the database
-        let mut last_seen_hash = match db::get_entries(&conn, None) {
-            Ok(entries) => {
-                if let Some(first) = entries.first() {
-                    first.content_hash.clone()
-                } else {
-                    String::new()
-                }
+        // Initialize the last seen hash and timestamp from the latest entry in the database
+        let mut last_seen_time = Utc::now();
+        let mut last_seen_hash = String::new();
+
+        if let Ok((h, time_str)) = conn.query_row::<(String, String), _, _>(
+            "SELECT content_hash, created_at FROM clippy_history ORDER BY created_at DESC LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ) {
+            if let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
+                last_seen_hash = h;
+                last_seen_time = dt.with_timezone(&Utc);
             }
-            Err(_) => String::new(),
-        };
+        }
 
         println!("Clipboard poller thread started. Initial hash: {}", last_seen_hash);
 
         loop {
+            // Sync last_seen_hash with the absolute latest database entry (ignoring pinned ordering)
+            // Only sync if the database entry is strictly newer than our last seen time (prevents syncing back to older pinned items on Clear all)
+            if let Ok((h, time_str)) = conn.query_row::<(String, String), _, _>(
+                "SELECT content_hash, created_at FROM clippy_history ORDER BY created_at DESC LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            ) {
+                if let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
+                    let dt_utc = dt.with_timezone(&Utc);
+                    if dt_utc > last_seen_time {
+                        last_seen_hash = h;
+                        last_seen_time = dt_utc;
+                    }
+                }
+            }
+
             let mut changed = false;
 
             // Try reading clipboard text
             match clipboard.get_text() {
-                Ok(text) => {
+                Ok(text) if !text.trim().is_empty() => {
                     let hash = compute_text_hash(&text);
                     if hash != last_seen_hash {
                         println!("New text copied: {}", text.chars().take(30).collect::<String>());
@@ -71,14 +91,15 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
                             Ok(_) => {
                                 let _ = db::prune_entries(&conn, 200);
                                 last_seen_hash = hash;
+                                last_seen_time = Utc::now();
                                 changed = true;
                             }
                             Err(e) => eprintln!("Failed to insert text entry: {}", e),
                         }
                     }
                 }
-                Err(_) => {
-                    // Try reading clipboard image if text is not available
+                _ => {
+                    // Try reading clipboard image if text is not available or empty
                     match clipboard.get_image() {
                         Ok(image_data) => {
                             let hash = compute_image_hash(image_data.width, image_data.height, &image_data.bytes);
@@ -102,6 +123,7 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
                                             Ok(_) => {
                                                 let _ = db::prune_entries(&conn, 200);
                                                 last_seen_hash = hash;
+                                                last_seen_time = Utc::now();
                                                 changed = true;
                                             }
                                             Err(e) => eprintln!("Failed to insert image entry: {}", e),

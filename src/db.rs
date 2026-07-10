@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension, Result};
 use chrono::{DateTime, Utc};
 use directories::ProjectDirs;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum EntryKind {
     Text,
     Image,
