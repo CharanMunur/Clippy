@@ -8,7 +8,14 @@ Linux only, specifically GNOME-based desktops (Ubuntu, Fedora Workstation, Pop!_
 
 ## Current Status
 
-The application is currently a skeleton window matching GNOME/Ubuntu styling with a native header bar.
+The application currently features:
+- A Windows 11-inspired native interface using Libadwaita, complete with a top icon tab bar (with blue underline active indicators), a sub-header bar with a bold title and "Clear all" button, and a non-resizable fixed window.
+- Individual floating cards showing content previews (limited to 3 lines and 200 characters to prevent overflow), with an integrated bottom-left timestamp, top-right "More actions" (`...`) menu button, and a bottom-right pushpin toggle.
+- Toggleable external action panel containing elevated square copy-to-clipboard and delete-entry buttons that slide out smoothly next to the card using a `GtkRevealer` transition when the `...` menu is clicked.
+- Smooth slide-up animations for deleting list items using `GtkRevealer` and timed database updates.
+- Native Drag & Drop support: drag any clipboard item card and drop it directly into other applications (transfers text content directly, and transfers images as file URI objects).
+- An isolated SQLite database storage layer (`src/db.rs`) with CRUD operations and complete unit test coverage.
+- A background clipboard polling thread (`src/poller.rs`) running every 400ms that captures new text and image data, hashes it, stores it in the database, and communicates updates back to the main thread via non-blocking channels.
 
 ## Getting Started
 

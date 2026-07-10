@@ -5,4 +5,10 @@ edition = "2024"
 
 [dependencies]
 adw = { version = "0.9.2", package = "libadwaita" }
+arboard = "3.6.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+directories = "6.0.0"
 gtk = { version = "0.11.4", package = "gtk4" }
+image = "0.25.10"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+sha2 = "0.11.0"
