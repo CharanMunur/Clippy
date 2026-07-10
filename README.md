@@ -10,74 +10,71 @@
 [![Built with Rust](https://img.shields.io/badge/Built_with-Rust-orange?logo=rust)](https://www.rust-lang.org/)
 [![GTK4](https://img.shields.io/badge/GTK-4-4A90D9?logo=gnome)](https://gtk.org/)
 [![libadwaita](https://img.shields.io/badge/libadwaita-1.x-5C2D91)](https://gnome.pages.gitlab.gnome.org/libadwaita/)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20GNOME-success?logo=linux)](https://www.gnome.org/)
-
-Clippy is a lightweight, privacy-first clipboard history manager built natively in Rust using GTK4 and libadwaita. It integrates seamlessly into the GNOME desktop, follows the Human Interface Guidelines, and runs quietly in the background — always ready when you need it.
 
 </div>
 
+Clippy is a lightweight clipboard history manager built natively in Rust using GTK4 and libadwaita. It follows the GNOME Human Interface Guidelines, stores everything locally, and runs quietly in the background.
+
 ---
 
-## ✨ Features
+## Features
 
 | Feature | Description |
 |---|---|
-| 📋 **Clipboard History** | Automatically captures text and images as you copy, stored locally in SQLite |
-| 🔍 **Live Search** | Instantly filter your clipboard history with a debounced real-time search bar |
-| 📌 **Pin Items** | Pin important clipboard entries so they survive "Clear All" |
-| 🖼️ **Image Support** | Captures and previews images alongside text entries |
-| 🌐 **Global Hotkey** | Configurable system-wide keyboard shortcut to toggle the window (default: `Super+V`) |
-| 🖱️ **Drag & Drop** | Drag any clipboard card and drop it directly into other apps |
-| 🗑️ **Smooth Deletions** | Slide-out action panel with animated delete using `GtkRevealer` |
-| 🔄 **Always on Top** | Optional window pin to keep Clippy above all other windows |
-| 🌗 **Dark & Light Theme** | Fully theme-aware — adapts automatically to your GNOME color scheme |
-| ⚙️ **Settings Panel** | Configure history limit, global hotkey, and autostart from within the app |
-| 🚀 **Autostart** | Optionally starts with your GNOME session via a `.desktop` autostart entry |
-| 🔒 **Privacy-first** | Everything stays local — no cloud, no sync, no telemetry |
+| Clipboard history | Captures text and images as you copy, stored locally in SQLite |
+| Live search | Filters clipboard history in real time as you type |
+| Pin items | Pinned entries survive "Clear All" |
+| Image support | Captures and previews images alongside text entries |
+| Global hotkey | Configurable system-wide shortcut to toggle the window (default: `Super+V`) |
+| Drag and drop | Drag a clipboard entry directly into another app |
+| Deletion with undo panel | Slide-out confirmation before removing an entry |
+| Always on top | Optional window pin to keep Clippy above other windows |
+| Theme aware | Follows your GNOME light/dark color scheme automatically |
+| Settings panel | Configure history limit, hotkey, and autostart from within the app |
+| Autostart | Optionally starts with your GNOME session |
+| Local only | No cloud, no sync, no telemetry |
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
-> Clippy adapts to both dark and light GNOME themes automatically.
+*(To be added)*
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Language | [Rust](https://www.rust-lang.org/) |
-| UI Toolkit | [GTK4](https://gtk.org/) via [`gtk4-rs`](https://gtk-rs.org/) |
-| Design System | [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) |
-| Database | [SQLite](https://www.sqlite.org/) via [`rusqlite`](https://github.com/rusqlite/rusqlite) |
-| Clipboard | [`arboard`](https://github.com/1Password/arboard) |
-| Image Handling | [`image`](https://github.com/image-rs/image) |
-| Hashing | [`sha2`](https://github.com/RustCrypto/hashes) |
-| Timestamps | [`chrono`](https://github.com/chronotope/chrono) |
-| Global Shortcuts | GNOME GSettings (`org.gnome.settings-daemon`) |
+| Language | Rust |
+| UI toolkit | GTK4 via gtk4-rs |
+| Design system | libadwaita |
+| Database | SQLite via rusqlite |
+| Clipboard access | arboard |
+| Image handling | image |
+| Hashing | sha2 |
+| Timestamps | chrono |
+| Global shortcut | GNOME custom-keybinding gsettings schema |
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 
-Ensure you have the GTK4 and libadwaita development libraries installed. On **Ubuntu / Debian**:
+Ubuntu / Debian:
 
 ```bash
 sudo apt install libgtk-4-dev libadwaita-1-dev pkg-config build-essential
 ```
 
-On **Fedora**:
+Fedora:
 
 ```bash
 sudo dnf install gtk4-devel libadwaita-devel pkg-config
 ```
 
-### Install (Recommended)
-
-Clone the repo and run the installer. This compiles a release build, installs the binary to `~/.local/bin`, registers the app icon, `.desktop` launcher, and optionally sets up autostart.
+### Install
 
 ```bash
 git clone https://github.com/CharanMunur/Clippy.git
@@ -85,7 +82,7 @@ cd Clippy
 ./install.sh
 ```
 
-To skip autostart on login:
+This builds a release binary, installs it to `~/.local/bin`, and registers the app icon and `.desktop` launcher. To skip autostart:
 
 ```bash
 ./install.sh --no-autostart
@@ -97,23 +94,21 @@ To skip autostart on login:
 ./uninstall.sh
 ```
 
-This removes the binary, launcher, icon, and autostart entry cleanly.
-
 ---
 
-## 🚀 Running Locally (Development)
+## Running Locally (Development)
 
 ```bash
 cargo run
 ```
 
-To run in background mode (daemon, no window):
+Run as a background process with no window:
 
 ```bash
 cargo run -- --background
 ```
 
-To toggle the window from a terminal or custom shortcut:
+Toggle the window from a terminal or custom shortcut:
 
 ```bash
 cargo run -- --toggle
@@ -121,66 +116,66 @@ cargo run -- --toggle
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 clippy/
 ├── src/
 │   ├── main.rs       # App entry point, window builder, CSS, menu actions
-│   ├── ui.rs         # Card layout, clipboard operations, list rendering
+│   ├── ui.rs         # Row layout, clipboard operations, list rendering
 │   ├── settings.rs   # Settings view, autostart toggle, hotkey config
-│   ├── hotkey.rs     # GNOME GSettings custom keybinding writer
+│   ├── hotkey.rs     # GNOME gsettings custom keybinding writer
 │   ├── poller.rs     # Background clipboard polling thread
 │   └── db.rs         # SQLite schema, CRUD, config store
 ├── icons/            # Custom symbolic SVG icons
 ├── assets/           # App icon
-├── install.sh        # One-command installer
-├── uninstall.sh      # Clean uninstaller
-└── clippy.desktop    # Desktop entry template
+├── install.sh
+├── uninstall.sh
+└── clippy.desktop
 ```
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Action | Shortcut |
 |---|---|
-| Toggle Clippy window | `Super + V` *(configurable in Settings)* |
-| Copy item | Left-click on any card |
-| Pin / unpin item | Click the pin icon on a card |
-| Open item actions | Click `···` on a card |
-| Delete item | Open actions → click the bin icon |
+| Toggle Clippy window | `Super+V` (configurable in Settings) |
+| Copy item | Left-click on an entry |
+| Pin / unpin item | Click the pin icon on an entry |
+| Open item actions | Click the menu icon on an entry |
+| Delete item | Open actions, then click delete |
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-All configuration is stored in a local SQLite database (`~/.local/share/clippy/clippy.db`) under a `config` table. You can change the following from the **Settings** panel inside the app:
+Configuration is stored in the local SQLite database at `~/.local/share/clippy/clippy.db`, under a `config` table. From the Settings panel inside the app you can change:
 
-- **Global Hotkey** — the system-wide shortcut to show/hide Clippy
-- **History Limit** — maximum number of clipboard entries to retain
-- **Autostart** — toggle whether Clippy starts with your GNOME session
+- Global hotkey
+- History limit
+- Autostart on login
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please open an issue first to discuss what you'd like to change, or submit a pull request directly for small fixes.
+Open an issue to discuss a change before starting significant work, or submit a pull request directly for small fixes.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Commit your changes: `git commit -m "feat: add your feature"`
-4. Push and open a PR: `git push origin feat/your-feature`
+4. Push and open a pull request
 
 ---
 
-## 👤 Author
+## Author
 
-**Charan Munur**
-🌐 [charanmunur.in](https://www.charanmunur.in) · 🐙 [GitHub](https://github.com/CharanMunur)
+Charan Munur
+[charanmunur.in](https://www.charanmunur.in) · [GitHub](https://github.com/CharanMunur)
 
 ---
 
-## 📄 License
+## License
 
-This project is open-source and available under the [MIT License](LICENSE).
+Available under the [MIT License](LICENSE).
