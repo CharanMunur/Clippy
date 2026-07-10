@@ -169,13 +169,6 @@ Open an issue to discuss a change before starting significant work, or submit a 
 
 ---
 
-## Author
-
-Charan Munur
-[charanmunur.in](https://www.charanmunur.in) · [GitHub](https://github.com/CharanMunur)
-
----
-
 ## License
 
 Available under the [MIT License](LICENSE).
