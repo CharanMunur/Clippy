@@ -15,8 +15,8 @@ fn compute_text_hash(text: &str) -> String {
 
 fn compute_image_hash(width: usize, height: usize, bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(&width.to_ne_bytes());
-    hasher.update(&height.to_ne_bytes());
+    hasher.update(width.to_ne_bytes());
+    hasher.update(height.to_ne_bytes());
     hasher.update(bytes);
     let result = hasher.finalize();
     result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -53,12 +53,11 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
             "SELECT content_hash, created_at FROM clippy_history ORDER BY created_at DESC LIMIT 1",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
-        ) {
-            if let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
+        )
+            && let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
                 last_seen_hash = h;
                 last_seen_time = dt.with_timezone(&Utc);
             }
-        }
 
         println!("Clipboard poller thread started. Initial hash: {}", last_seen_hash);
 
@@ -69,15 +68,14 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
                 "SELECT content_hash, created_at FROM clippy_history ORDER BY created_at DESC LIMIT 1",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
-            ) {
-                if let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
+            )
+                && let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
                     let dt_utc = dt.with_timezone(&Utc);
                     if dt_utc > last_seen_time {
                         last_seen_hash = h;
                         last_seen_time = dt_utc;
                     }
                 }
-            }
 
             let mut changed = false;
 
@@ -89,7 +87,11 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
                         println!("New text copied: {}", text.chars().take(30).collect::<String>());
                         match db::insert_entry(&conn, EntryKind::Text, Some(&text), None, &hash) {
                             Ok(_) => {
-                                let _ = db::prune_entries(&conn, 200);
+                                let limit = db::get_config_val(&conn, "history_limit")
+                                    .unwrap_or(None)
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                                    .unwrap_or(200);
+                                let _ = db::prune_entries(&conn, limit);
                                 last_seen_hash = hash;
                                 last_seen_time = Utc::now();
                                 changed = true;
@@ -121,7 +123,11 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
                                         let image_path_str = image_path.to_string_lossy();
                                         match db::insert_entry(&conn, EntryKind::Image, None, Some(&image_path_str), &hash) {
                                             Ok(_) => {
-                                                let _ = db::prune_entries(&conn, 200);
+                                                let limit = db::get_config_val(&conn, "history_limit")
+                                                    .unwrap_or(None)
+                                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                                                    .unwrap_or(200);
+                                                let _ = db::prune_entries(&conn, limit);
                                                 last_seen_hash = hash;
                                                 last_seen_time = Utc::now();
                                                 changed = true;

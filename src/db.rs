@@ -78,6 +78,29 @@ fn create_schema(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS clippy_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO clippy_config (key, value) VALUES ('autostart', 'true')",
+        [],
+    )?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO clippy_config (key, value) VALUES ('shortcut', '<Super>v')",
+        [],
+    )?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO clippy_config (key, value) VALUES ('history_limit', '200')",
+        [],
+    )?;
+
     Ok(())
 }
 
@@ -144,12 +167,11 @@ pub fn get_entries(conn: &Connection, search_query: Option<&str>) -> Result<Vec<
                    FROM clippy_history".to_string();
 
     let mut params_vec: Vec<String> = Vec::new();
-    if let Some(query) = search_query {
-        if !query.trim().is_empty() {
+    if let Some(query) = search_query
+        && !query.trim().is_empty() {
             sql.push_str(" WHERE text_content LIKE ?1");
             params_vec.push(format!("%{}%", query));
         }
-    }
 
     sql.push_str(" ORDER BY pinned DESC, created_at DESC");
 
@@ -267,6 +289,29 @@ pub fn clear_unpinned_entries(conn: &Connection) -> Result<()> {
     }
 
     conn.execute("DELETE FROM clippy_history WHERE pinned = 0", [])?;
+    Ok(())
+}
+
+/// Gets a configuration value by key.
+pub fn get_config_val(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let val: Option<String> = conn
+        .query_row(
+            "SELECT value FROM clippy_config WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(val)
+}
+
+/// Sets a configuration value by key, updating it if it already exists.
+pub fn set_config_val(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO clippy_config (key, value)
+         VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
     Ok(())
 }
 
