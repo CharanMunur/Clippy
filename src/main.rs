@@ -58,9 +58,10 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
     let card = Box::new(Orientation::Horizontal, 0);
     card.add_css_class("card");
     card.set_hexpand(true);
-    card.set_margin_bottom(4); // Spacing between rows
     if entry.text_content.is_some() {
-        card.set_height_request(98); // Enforce 84px height only for text items
+        card.set_height_request(98); // Enforce fixed height for text items
+    } else {
+        card.set_height_request(120); // Cap image cards to prevent window expansion
     }
 
     // Left column: content
@@ -89,10 +90,16 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
         left_col.append(&label);
     } else if let Some(path) = &entry.image_path {
         let picture = Picture::for_filename(path);
-        picture.set_height_request(120); // Dynamic height request as before
+        picture.set_height_request(110);
+        picture.set_can_shrink(true);
         picture.set_halign(gtk::Align::Start);
         left_col.append(&picture);
     }
+
+    // Spacer pushes timestamp to bottom of left_col, aligning it with the pin button in right_col
+    let left_spacer = Box::new(Orientation::Vertical, 0);
+    left_spacer.set_vexpand(true);
+    left_col.append(&left_spacer);
 
     // Small timestamp at the bottom-left of the card content
     let time_label = Label::builder()
@@ -101,7 +108,6 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
         .build();
     time_label.add_css_class("caption");
     time_label.add_css_class("dim-label");
-    time_label.set_margin_top(6);
     left_col.append(&time_label);
 
     // Right column: More (...) and Pin buttons inside the card
@@ -123,8 +129,14 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
     let spacer = Box::new(Orientation::Vertical, 0);
     spacer.set_vexpand(true);
 
+    let pin_icon = if entry.pinned {
+        "clippy-pin-active-symbolic"
+    } else {
+        "clippy-pin-symbolic"
+    };
+
     let pin_btn = Button::builder()
-        .icon_name("view-pin-symbolic")
+        .icon_name(pin_icon)
         .tooltip_text(if entry.pinned { "Unpin entry" } else { "Pin entry" })
         .build();
     pin_btn.add_css_class("flat");
@@ -163,8 +175,7 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
 
     let action_box = Box::new(Orientation::Horizontal, 0);
     action_box.set_valign(gtk::Align::Fill);
-    action_box.set_margin_bottom(4); // Align with card bottom margin
-    action_box.set_margin_start(0);   // Create spacing only when revealed!
+    action_box.set_margin_start(0);
 
     let copy_btn = Button::builder()
         .icon_name("edit-copy-symbolic")
@@ -174,12 +185,8 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
         .build();
     copy_btn.add_css_class("card");
     copy_btn.set_width_request(84);
-    
-    let entry_clone = entry.clone();
-    copy_btn.connect_clicked(move |_| {
-        copy_to_clipboard(&entry_clone);
-    });
 
+    // Define delete_btn first so it can be captured in copy_btn's closure
     let delete_btn = Button::builder()
         .icon_name("user-trash-symbolic")
         .tooltip_text("Delete entry")
@@ -189,6 +196,23 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
     delete_btn.add_css_class("card");
     delete_btn.add_css_class("error");
     delete_btn.set_width_request(84);
+
+    // Wire copy_btn: copy content then close action panel
+    let entry_clone = entry.clone();
+    let action_revealer_clone2 = action_revealer.clone();
+    let card_clone2 = card.clone();
+    let copy_btn_clone2 = copy_btn.clone();
+    let delete_btn_clone2 = delete_btn.clone();
+    let more_btn_clone2 = more_btn.clone();
+    copy_btn.connect_clicked(move |_| {
+        copy_to_clipboard(&entry_clone);
+        // Close back the panel on successful copy
+        action_revealer_clone2.set_reveal_child(false);
+        card_clone2.remove_css_class("card-revealed");
+        copy_btn_clone2.remove_css_class("btn-copy-revealed");
+        delete_btn_clone2.remove_css_class("btn-delete-revealed");
+        more_btn_clone2.remove_css_class("suggested-action");
+    });
 
     let main_revealer_clone = main_revealer.clone();
     let list_box_clone = list_box.clone();
@@ -220,32 +244,82 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, sear
     let card_clone = card.clone();
     let copy_btn_clone = copy_btn.clone();
     let delete_btn_clone = delete_btn.clone();
+    let list_box_clone = list_box.clone();
     more_btn.connect_clicked(move |_| {
         let is_revealed = action_revealer_clone.reveals_child();
+        
+        if !is_revealed {
+            // Close all other revealed action panels in the list first
+            let mut sibling = list_box_clone.first_child();
+            while let Some(row_widget) = sibling {
+                if let Some(row) = row_widget.downcast_ref::<ListBoxRow>() {
+                    if let Some(main_rev) = row.child().and_then(|w| w.downcast::<gtk::Revealer>().ok()) {
+                        if let Some(container) = main_rev.child().and_then(|w| w.downcast::<Box>().ok()) {
+                            let mut child = container.first_child();
+                            let mut found_card: Option<Box> = None;
+                            let mut found_revealer: Option<gtk::Revealer> = None;
+                            while let Some(w) = child {
+                                if let Some(c) = w.downcast_ref::<Box>() {
+                                    if c.has_css_class("card") {
+                                        found_card = Some(c.clone());
+                                    }
+                                } else if let Some(r) = w.downcast_ref::<gtk::Revealer>() {
+                                    found_revealer = Some(r.clone());
+                                }
+                                child = w.next_sibling();
+                            }
+                            
+                            if let (Some(c), Some(r)) = (found_card, found_revealer) {
+                                if r != action_revealer_clone {
+                                    r.set_reveal_child(false);
+                                    c.remove_css_class("card-revealed");
+                                    
+                                    if let Some(action_box) = r.child().and_then(|w| w.downcast::<Box>().ok()) {
+                                        let mut btn_child = action_box.first_child();
+                                        while let Some(btn) = btn_child {
+                                            if let Some(b) = btn.downcast_ref::<Button>() {
+                                                b.remove_css_class("btn-copy-revealed");
+                                                b.remove_css_class("btn-delete-revealed");
+                                            }
+                                            btn_child = btn.next_sibling();
+                                        }
+                                    }
+                                    
+                                    let mut card_child = c.first_child();
+                                    while let Some(cc) = card_child {
+                                        if let Some(right_c) = cc.downcast_ref::<Box>() {
+                                            if let Some(m_btn) = right_c.first_child().and_then(|w| w.downcast::<Button>().ok()) {
+                                                m_btn.remove_css_class("suggested-action");
+                                            }
+                                        }
+                                        card_child = cc.next_sibling();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                sibling = row_widget.next_sibling();
+            }
+        }
+
         action_revealer_clone.set_reveal_child(!is_revealed);
         if !is_revealed {
             more_btn_clone.add_css_class("suggested-action");
             let h = card_clone.height();
             
-            // Set the width request dynamically to match the height, making them perfect squares!
+            // Set button width = card height → perfect squares
             copy_btn_clone.set_width_request(h);
             delete_btn_clone.set_width_request(h);
             
-            // Apply capsule styling to corners
+            // Apply capsule corner styling
             card_clone.add_css_class("card-revealed");
             copy_btn_clone.add_css_class("btn-copy-revealed");
             delete_btn_clone.add_css_class("btn-delete-revealed");
-            
-            // Total panel width is h + h
-            let shift = 2 * h;
-            card_clone.set_margin_start(-shift);
-            card_clone.set_margin_end(shift);
         } else {
             more_btn_clone.remove_css_class("suggested-action");
-            card_clone.set_margin_start(0);
-            card_clone.set_margin_end(0);
             
-            // Revert capsule styling to corners
+            // Revert capsule corner styling
             card_clone.remove_css_class("card-revealed");
             copy_btn_clone.remove_css_class("btn-copy-revealed");
             delete_btn_clone.remove_css_class("btn-delete-revealed");
@@ -345,6 +419,15 @@ fn main() {
             eprintln!("Failed to initialize database: {}", e);
         }
 
+        // Add our custom icons directory to search path to override view-pin-symbolic using absolute path
+        if let Ok(mut cwd) = std::env::current_dir() {
+            cwd.push("icons");
+            if let Some(display) = gtk::gdk::Display::default() {
+                let icon_theme = gtk::IconTheme::for_display(&display);
+                icon_theme.add_search_path(&cwd);
+            }
+        }
+
         // Initialize custom CSS provider to remove ListBox & ListBoxRow backgrounds/borders/hovers
         let provider = gtk::CssProvider::new();
         provider.load_from_data(
@@ -353,9 +436,14 @@ fn main() {
                 background-color: transparent;
                 border-style: none;
                 box-shadow: none;
+                padding: 0;
+                margin: 0;
             }
             listboxrow:hover, listboxrow:selected, listboxrow:focus, listboxrow:active {
                 background-color: transparent;
+            }
+            .card {
+                border-radius: 6px;
             }
             .card.card-revealed {
                 border-top-right-radius: 0px;
@@ -370,8 +458,8 @@ fn main() {
             button.card.btn-delete-revealed {
                 border-top-left-radius: 0px;
                 border-bottom-left-radius: 0px;
-                border-top-right-radius: 12px;
-                border-bottom-right-radius: 12px;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
             }
             "
         );
@@ -400,7 +488,7 @@ fn main() {
 
         // Pin window button on the top-left of the controls bar (always-on-top toggle)
         let pin_win_btn = Button::builder()
-            .icon_name("view-pin-symbolic")
+            .icon_name("clippy-pin-symbolic")
             .valign(gtk::Align::Center)
             .tooltip_text("Pin window (always on top)")
             .build();
@@ -423,10 +511,12 @@ fn main() {
             if new_state {
                 pin_win_btn_clone.add_css_class("suggested-action");
                 pin_win_btn_clone.remove_css_class("dim-label");
+                pin_win_btn_clone.set_icon_name("clippy-pin-active-symbolic");
                 pin_win_btn_clone.set_tooltip_text(Some("Unpin window (always on top)"));
             } else {
                 pin_win_btn_clone.remove_css_class("suggested-action");
                 pin_win_btn_clone.add_css_class("dim-label");
+                pin_win_btn_clone.set_icon_name("clippy-pin-symbolic");
                 pin_win_btn_clone.set_tooltip_text(Some("Pin window (always on top)"));
             }
         });
