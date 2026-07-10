@@ -1,6 +1,6 @@
 use adw::prelude::*;
 use adw::{Application, ApplicationWindow, HeaderBar, StatusPage};
-use gtk::{Box, Orientation, Label, ScrolledWindow, ListBox, ListBoxRow, Stack, Picture, Button};
+use gtk::{Box, Orientation, Label, ScrolledWindow, ListBox, ListBoxRow, Stack, Picture, Button, SearchEntry};
 use gtk::glib;
 use chrono::{DateTime, Utc};
 
@@ -43,7 +43,7 @@ fn copy_to_clipboard(entry: &db::ClipboardEntry) {
     }
 }
 
-fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> ListBoxRow {
+fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack, search_entry: &SearchEntry) -> ListBoxRow {
     // Main Revealer wrapping the entire row's layout to animate deletion
     let main_revealer = gtk::Revealer::builder()
         .transition_type(gtk::RevealerTransitionType::SlideUp)
@@ -51,52 +51,17 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
         .reveal_child(true)
         .build();
 
-    let row_container = Box::new(Orientation::Horizontal, 8);
+    let row_container = Box::new(Orientation::Horizontal, 0); // No spacing here to avoid spacing gaps when actions are hidden
     row_container.set_valign(gtk::Align::Center);
 
     // 1. The Card Box (elevated card matching Windows 11 styling)
     let card = Box::new(Orientation::Horizontal, 0);
     card.add_css_class("card");
     card.set_hexpand(true);
-    card.set_margin_bottom(10); // Spacing between rows
-
-    // Drag and Drop support
-    let drag_source = gtk::DragSource::new();
-    drag_source.set_actions(gtk::gdk::DragAction::COPY);
-    
-    // Set a uniform clipboard copy icon as the drag preview for all item types
-    if let Some(display) = gtk::gdk::Display::default() {
-        let icon_theme = gtk::IconTheme::for_display(&display);
-        let paintable = icon_theme.lookup_icon(
-            "edit-copy-symbolic",
-            &[],
-            32, // size in px
-            1,  // scale factor
-            gtk::TextDirection::None,
-            gtk::IconLookupFlags::empty(),
-        );
-        drag_source.set_icon(Some(&paintable), 16, 16);
+    card.set_margin_bottom(4); // Spacing between rows
+    if entry.text_content.is_some() {
+        card.set_height_request(98); // Enforce 84px height only for text items
     }
-    
-    if let Some(text) = &entry.text_content {
-        let text_clone = text.clone();
-        drag_source.connect_prepare(move |_, _, _| {
-            let bytes = gtk::glib::Bytes::from(text_clone.as_bytes());
-            let p1 = gtk::gdk::ContentProvider::for_bytes("text/plain", &bytes);
-            let p2 = gtk::gdk::ContentProvider::for_bytes("text/plain;charset=utf-8", &bytes);
-            let p3 = gtk::gdk::ContentProvider::for_bytes("UTF8_STRING", &bytes);
-            let p4 = gtk::gdk::ContentProvider::for_bytes("STRING", &bytes);
-            let p5 = gtk::gdk::ContentProvider::for_value(&text_clone.to_value());
-            Some(gtk::gdk::ContentProvider::new_union(&[p1, p2, p3, p4, p5]))
-        });
-    } else if let Some(path) = &entry.image_path {
-        let path_clone = path.clone();
-        drag_source.connect_prepare(move |_, _, _| {
-            let file = gtk::gio::File::for_path(&path_clone);
-            Some(gtk::gdk::ContentProvider::for_value(&file.to_value()))
-        });
-    }
-    card.add_controller(drag_source);
 
     // Left column: content
     let left_col = Box::new(Orientation::Vertical, 4);
@@ -107,7 +72,7 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
     left_col.set_margin_end(12);
 
     if let Some(text) = &entry.text_content {
-        let preview_lines: Vec<&str> = text.lines().take(3).collect();
+        let preview_lines: Vec<&str> = text.lines().take(1).collect();
         let joined = preview_lines.join("\n");
         let preview_text: String = joined.chars().take(200).collect();
         
@@ -117,14 +82,14 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
             .xalign(0.0)
             .wrap(true)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
-            .lines(3)
+            .lines(1)
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .hexpand(true)
             .build();
         left_col.append(&label);
     } else if let Some(path) = &entry.image_path {
         let picture = Picture::for_filename(path);
-        picture.set_height_request(120);
+        picture.set_height_request(120); // Dynamic height request as before
         picture.set_halign(gtk::Align::Start);
         left_col.append(&picture);
     }
@@ -171,11 +136,12 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
     
     let list_box_clone = list_box.clone();
     let stack_clone = stack.clone();
+    let search_entry_clone = search_entry.clone();
     let entry_id = entry.id;
     pin_btn.connect_clicked(move |_| {
         if let Ok(conn) = db::init_db() {
             let _ = db::toggle_pin_entry(&conn, entry_id);
-            refresh_list(&list_box_clone, &stack_clone);
+            refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
         }
     });
 
@@ -192,19 +158,22 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
         .transition_type(gtk::RevealerTransitionType::SlideLeft)
         .transition_duration(250)
         .reveal_child(false)
+        .valign(gtk::Align::Fill)
         .build();
 
-    let action_box = Box::new(Orientation::Horizontal, 6);
-    action_box.set_valign(gtk::Align::Center);
-    action_box.set_margin_bottom(10); // Align with card bottom margin
+    let action_box = Box::new(Orientation::Horizontal, 0);
+    action_box.set_valign(gtk::Align::Fill);
+    action_box.set_margin_bottom(4); // Align with card bottom margin
+    action_box.set_margin_start(0);   // Create spacing only when revealed!
 
     let copy_btn = Button::builder()
         .icon_name("edit-copy-symbolic")
         .tooltip_text("Copy to clipboard")
+        .valign(gtk::Align::Fill)
+        .halign(gtk::Align::Fill)
         .build();
     copy_btn.add_css_class("card");
-    copy_btn.set_height_request(44);
-    copy_btn.set_width_request(44);
+    copy_btn.set_width_request(84);
     
     let entry_clone = entry.clone();
     copy_btn.connect_clicked(move |_| {
@@ -214,25 +183,28 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
     let delete_btn = Button::builder()
         .icon_name("user-trash-symbolic")
         .tooltip_text("Delete entry")
+        .valign(gtk::Align::Fill)
+        .halign(gtk::Align::Fill)
         .build();
     delete_btn.add_css_class("card");
     delete_btn.add_css_class("error");
-    delete_btn.set_height_request(44);
-    delete_btn.set_width_request(44);
+    delete_btn.set_width_request(84);
 
     let main_revealer_clone = main_revealer.clone();
     let list_box_clone = list_box.clone();
     let stack_clone = stack.clone();
+    let search_entry_clone = search_entry.clone();
     delete_btn.connect_clicked(move |_| {
         // Animate row collapse
         main_revealer_clone.set_reveal_child(false);
         
         let list_box_clone = list_box_clone.clone();
         let stack_clone = stack_clone.clone();
+        let search_entry_clone = search_entry_clone.clone();
         glib::timeout_add_local_once(std::time::Duration::from_millis(250), move || {
             if let Ok(conn) = db::init_db() {
                 let _ = db::delete_entry(&conn, entry_id);
-                refresh_list(&list_box_clone, &stack_clone);
+                refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
             }
         });
     });
@@ -245,15 +217,78 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
     // Connect the More button to toggle the action buttons panel
     let action_revealer_clone = action_revealer.clone();
     let more_btn_clone = more_btn.clone();
+    let card_clone = card.clone();
+    let copy_btn_clone = copy_btn.clone();
+    let delete_btn_clone = delete_btn.clone();
     more_btn.connect_clicked(move |_| {
         let is_revealed = action_revealer_clone.reveals_child();
         action_revealer_clone.set_reveal_child(!is_revealed);
         if !is_revealed {
             more_btn_clone.add_css_class("suggested-action");
+            let h = card_clone.height();
+            
+            // Set the width request dynamically to match the height, making them perfect squares!
+            copy_btn_clone.set_width_request(h);
+            delete_btn_clone.set_width_request(h);
+            
+            // Apply capsule styling to corners
+            card_clone.add_css_class("card-revealed");
+            copy_btn_clone.add_css_class("btn-copy-revealed");
+            delete_btn_clone.add_css_class("btn-delete-revealed");
+            
+            // Total panel width is h + h
+            let shift = 2 * h;
+            card_clone.set_margin_start(-shift);
+            card_clone.set_margin_end(shift);
         } else {
             more_btn_clone.remove_css_class("suggested-action");
+            card_clone.set_margin_start(0);
+            card_clone.set_margin_end(0);
+            
+            // Revert capsule styling to corners
+            card_clone.remove_css_class("card-revealed");
+            copy_btn_clone.remove_css_class("btn-copy-revealed");
+            delete_btn_clone.remove_css_class("btn-delete-revealed");
         }
     });
+
+    // Drag and Drop support
+    let drag_source = gtk::DragSource::new();
+    drag_source.set_actions(gtk::gdk::DragAction::COPY);
+    
+    // Set a uniform clipboard copy icon as the drag preview for all item types
+    if let Some(display) = gtk::gdk::Display::default() {
+        let icon_theme = gtk::IconTheme::for_display(&display);
+        let paintable = icon_theme.lookup_icon(
+            "edit-copy-symbolic",
+            &[],
+            32, // size in px
+            1,  // scale factor
+            gtk::TextDirection::None,
+            gtk::IconLookupFlags::empty(),
+        );
+        drag_source.set_icon(Some(&paintable), 16, 16);
+    }
+    
+    if let Some(text) = &entry.text_content {
+        let text_clone = text.clone();
+        drag_source.connect_prepare(move |_, _, _| {
+            let bytes = gtk::glib::Bytes::from(text_clone.as_bytes());
+            let p1 = gtk::gdk::ContentProvider::for_bytes("text/plain", &bytes);
+            let p2 = gtk::gdk::ContentProvider::for_bytes("text/plain;charset=utf-8", &bytes);
+            let p3 = gtk::gdk::ContentProvider::for_bytes("UTF8_STRING", &bytes);
+            let p4 = gtk::gdk::ContentProvider::for_bytes("STRING", &bytes);
+            let p5 = gtk::gdk::ContentProvider::for_value(&text_clone.to_value());
+            Some(gtk::gdk::ContentProvider::new_union(&[p1, p2, p3, p4, p5]))
+        });
+    } else if let Some(path) = &entry.image_path {
+        let path_clone = path.clone();
+        drag_source.connect_prepare(move |_, _, _| {
+            let file = gtk::gio::File::for_path(&path_clone);
+            Some(gtk::gdk::ContentProvider::for_value(&file.to_value()))
+        });
+    }
+    card.add_controller(drag_source);
 
     main_revealer.set_child(Some(&row_container));
     let row = ListBoxRow::new();
@@ -263,7 +298,7 @@ fn build_row(entry: &db::ClipboardEntry, list_box: &ListBox, stack: &Stack) -> L
     row
 }
 
-fn refresh_list(list_box: &ListBox, stack: &Stack) {
+fn refresh_list(list_box: &ListBox, stack: &Stack, search_entry: &SearchEntry) {
     let conn = match db::init_db() {
         Ok(c) => c,
         Err(e) => {
@@ -272,7 +307,10 @@ fn refresh_list(list_box: &ListBox, stack: &Stack) {
         }
     };
 
-    let entries = match db::get_entries(&conn, None) {
+    let query = search_entry.text().to_string();
+    let query_opt = if query.is_empty() { None } else { Some(query.as_str()) };
+
+    let entries = match db::get_entries(&conn, query_opt) {
         Ok(e) => e,
         Err(e) => {
             eprintln!("Failed to query entries in refresh_list: {}", e);
@@ -290,7 +328,7 @@ fn refresh_list(list_box: &ListBox, stack: &Stack) {
     } else {
         stack.set_visible_child_name("list");
         for entry in entries {
-            let row = build_row(&entry, list_box, stack);
+            let row = build_row(&entry, list_box, stack, search_entry);
             list_box.append(&row);
         }
     }
@@ -307,17 +345,33 @@ fn main() {
             eprintln!("Failed to initialize database: {}", e);
         }
 
-        // Initialize custom CSS provider for tabs and general styling
+        // Initialize custom CSS provider to remove ListBox & ListBoxRow backgrounds/borders/hovers
         let provider = gtk::CssProvider::new();
         provider.load_from_data(
             "
-            .tab-button {
-                padding: 8px 16px;
-                border-bottom: 3px solid transparent;
-                border-radius: 0px;
+            listbox, listboxrow {
+                background-color: transparent;
+                border-style: none;
+                box-shadow: none;
             }
-            .tab-button:checked, .tab-button.active {
-                border-bottom: 3px solid #3584e4;
+            listboxrow:hover, listboxrow:selected, listboxrow:focus, listboxrow:active {
+                background-color: transparent;
+            }
+            .card.card-revealed {
+                border-top-right-radius: 0px;
+                border-bottom-right-radius: 0px;
+            }
+            button.card.btn-copy-revealed {
+                border-top-left-radius: 0px;
+                border-bottom-left-radius: 0px;
+                border-top-right-radius: 0px;
+                border-bottom-right-radius: 0px;
+            }
+            button.card.btn-delete-revealed {
+                border-top-left-radius: 0px;
+                border-bottom-left-radius: 0px;
+                border-top-right-radius: 12px;
+                border-bottom-right-radius: 12px;
             }
             "
         );
@@ -343,48 +397,65 @@ fn main() {
 
         // Header bar (empty window drag area)
         let header_bar = HeaderBar::new();
+
+        // Pin window button on the top-left of the controls bar (always-on-top toggle)
+        let pin_win_btn = Button::builder()
+            .icon_name("view-pin-symbolic")
+            .valign(gtk::Align::Center)
+            .tooltip_text("Pin window (always on top)")
+            .build();
+        pin_win_btn.add_css_class("flat");
+        pin_win_btn.add_css_class("dim-label");
+
+        let pin_win_btn_clone = pin_win_btn.clone();
+        let is_win_pinned = std::rc::Rc::new(std::cell::Cell::new(false));
+        
+        pin_win_btn.connect_clicked(move |_| {
+            let new_state = !is_win_pinned.get();
+            is_win_pinned.set(new_state);
+            
+            // Run wmctrl command to toggle always-on-top window manager state
+            let action = if new_state { "add" } else { "remove" };
+            let _ = std::process::Command::new("wmctrl")
+                .args(&["-r", ":ACTIVE:", "-b", &format!("{},above", action)])
+                .status();
+            
+            if new_state {
+                pin_win_btn_clone.add_css_class("suggested-action");
+                pin_win_btn_clone.remove_css_class("dim-label");
+                pin_win_btn_clone.set_tooltip_text(Some("Unpin window (always on top)"));
+            } else {
+                pin_win_btn_clone.remove_css_class("suggested-action");
+                pin_win_btn_clone.add_css_class("dim-label");
+                pin_win_btn_clone.set_tooltip_text(Some("Pin window (always on top)"));
+            }
+        });
+        header_bar.pack_start(&pin_win_btn);
+
         content.append(&header_bar);
 
-        // Center Tab Bar (matches Windows 11 clipboard manager header tabs)
-        let tab_bar = Box::new(Orientation::Horizontal, 16);
-        tab_bar.set_halign(gtk::Align::Center);
-        tab_bar.set_margin_top(8);
-        tab_bar.set_margin_bottom(8);
-
-        let tabs = [
-            ("edit-copy-symbolic", true),     // Clipboard (Active)
-            ("face-smile-symbolic", false),   // Emojis
-            ("media-video-symbolic", false),  // GIFs
-            ("face-wink-symbolic", false),    // Kaomoji
-            ("character-format-symbolic", false), // Symbols
-            ("preferences-system-symbolic", false), // Settings
-        ];
-
-        for (icon, is_active) in tabs {
-            let btn = Button::builder()
-                .icon_name(icon)
-                .build();
-            btn.add_css_class("flat");
-            btn.add_css_class("tab-button");
-            if is_active {
-                btn.add_css_class("active");
-            }
-            tab_bar.append(&btn);
-        }
-        content.append(&tab_bar);
+        // Live Search Entry Bar (replacing the tab bar)
+        let search_entry = SearchEntry::builder()
+            .margin_start(16)
+            .margin_end(16)
+            .margin_top(8)
+            .margin_bottom(8)
+            .placeholder_text("Search clipboard...")
+            .build();
+        content.append(&search_entry);
 
         // Sub-Header Box (Clipboard label on left, Clear all on right)
         let sub_header = Box::new(Orientation::Horizontal, 0);
         sub_header.set_margin_top(8);
         sub_header.set_margin_bottom(8);
-        sub_header.set_margin_start(16);
+        sub_header.set_margin_start(18);
         sub_header.set_margin_end(16);
 
         let title_label = Label::builder()
             .label("Clipboard")
             .halign(gtk::Align::Start)
             .build();
-        title_label.add_css_class("title-2");
+        title_label.add_css_class("title-4");
 
         let clear_all_btn = Button::builder()
             .label("Clear all")
@@ -441,16 +512,44 @@ fn main() {
         window.set_content(Some(&content));
 
         // Initial list load
-        refresh_list(&list_box, &stack);
+        refresh_list(&list_box, &stack, &search_entry);
 
         // Set up "Clear all" button action
         let list_box_clone = list_box.clone();
         let stack_clone = stack.clone();
+        let search_entry_clone = search_entry.clone();
         clear_all_btn.connect_clicked(move |_| {
             if let Ok(conn) = db::init_db() {
                 let _ = db::clear_unpinned_entries(&conn);
-                refresh_list(&list_box_clone, &stack_clone);
+                refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
             }
+        });
+
+        // Track the current debounce timer ID
+        let current_timer = std::rc::Rc::new(std::cell::RefCell::new(None::<glib::SourceId>));
+        
+        let list_box_clone2 = list_box.clone();
+        let stack_clone2 = stack.clone();
+        let search_entry_clone2 = search_entry.clone();
+        
+        search_entry.connect_search_changed(move |_| {
+            // Cancel the previous timer if it exists
+            if let Some(source_id) = current_timer.borrow_mut().take() {
+                source_id.remove();
+            }
+            
+            let list_box_clone = list_box_clone2.clone();
+            let stack_clone = stack_clone2.clone();
+            let search_entry_clone = search_entry_clone2.clone();
+            let current_timer_clone = current_timer.clone();
+            
+            // Start a new timer for 250ms
+            let source_id = glib::timeout_add_local_once(std::time::Duration::from_millis(250), move || {
+                current_timer_clone.borrow_mut().take();
+                refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
+            });
+            
+            *current_timer.borrow_mut() = Some(source_id);
         });
 
         // Set up the click handler on row activation to copy back to clipboard
@@ -472,13 +571,14 @@ fn main() {
         // Poll the channel in the GLib event loop every 100ms
         let list_box_clone = list_box.clone();
         let stack_clone = stack.clone();
+        let search_entry_clone = search_entry.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             let mut changed = false;
             while let Ok(_) = rx.try_recv() {
                 changed = true;
             }
             if changed {
-                refresh_list(&list_box_clone, &stack_clone);
+                refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
             }
             glib::ControlFlow::Continue
         });
