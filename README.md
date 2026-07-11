@@ -34,11 +34,23 @@ Clippy is a lightweight clipboard history manager built natively in Rust using G
 | Autostart | Optionally starts with your GNOME session |
 | Local only | No cloud, no sync, no telemetry |
 
----
 
-## Screenshots
+## 📸 Screenshots
 
-*(To be added)*
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="assets/clippy-img-1.png" alt="Clippy – Dark Theme" width="340"/>
+        <br/><sub><b>Dark Theme</b></sub>
+      </td>
+      <td align="center">
+        <img src="assets/clippy-img-2.png" alt="Clippy – Light Theme" width="340"/>
+        <br/><sub><b>Light Theme</b></sub>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ---
 
