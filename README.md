@@ -152,7 +152,7 @@ clippy/
 
 | Action | Shortcut |
 |---|---|
-| Toggle Clippy window | `Super+V` (configurable in Settings) |
+| Toggle Clippy window | `Super + J` *(configurable in Settings)* |
 | Copy item | Left-click on an entry |
 | Pin / unpin item | Click the pin icon on an entry |
 | Open item actions | Click the menu icon on an entry |

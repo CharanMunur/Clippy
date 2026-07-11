@@ -1,7 +1,28 @@
 use adw::prelude::*;
-use gtk::{Box, Orientation, Label, ScrolledWindow, Switch, Entry, Button, Stack, ListBox, SearchEntry, MenuButton, gio};
+use gtk::{Box, Orientation, Label, ScrolledWindow, Switch, Entry, Button, Stack, ListBox, SearchEntry, MenuButton, EventControllerKey, gio};
+use gtk::glib;
+use adw::{Window as AdwWindow, HeaderBar as AdwHeaderBar};
 use crate::db;
 use crate::hotkey;
+
+/// Converts GTK accelerator format to human-readable: `<Super>j` → `Super + J`
+fn gtk_to_human(accel: &str) -> String {
+    let mut s = accel.to_string();
+    let mut parts: Vec<String> = Vec::new();
+    // Extract modifiers
+    for (tag, label) in &[("<Super>", "Super"), ("<Ctrl>", "Ctrl"), ("<Alt>", "Alt"), ("<Shift>", "Shift")] {
+        if s.contains(tag) {
+            parts.push(label.to_string());
+            s = s.replace(tag, "");
+        }
+    }
+    // Remaining is the key
+    if !s.is_empty() {
+        parts.push(s.to_uppercase());
+    }
+    parts.join(" + ")
+}
+
 
 /// Enables or disables autostart on login by creating/removing the desktop entry in ~/.config/autostart/
 pub fn set_autostart_enabled(enabled: bool) -> std::io::Result<()> {
@@ -96,7 +117,7 @@ pub fn build_settings_view(
     // 2. Shortcut Setting Card
     let shortcut_card = Box::new(Orientation::Horizontal, 12);
     shortcut_card.add_css_class("settings-card");
-    
+
     let shortcut_text_box = Box::new(Orientation::Vertical, 4);
     let shortcut_title = Label::builder()
         .label("Global Shortcut")
@@ -104,26 +125,173 @@ pub fn build_settings_view(
         .build();
     shortcut_title.add_css_class("settings-label-title");
     let shortcut_sub = Label::builder()
-        .label("Press key combo to toggle window (e.g. <Super>v)")
+        .label("Click to record a new key combination")
         .halign(gtk::Align::Start)
         .build();
     shortcut_sub.add_css_class("settings-label-subtitle");
     shortcut_text_box.append(&shortcut_title);
     shortcut_text_box.append(&shortcut_sub);
-    
-    let shortcut_entry = Entry::builder()
+
+    // Backing store — always holds the GTK accel string e.g. "<Super>j"
+    let shortcut_recorded = std::rc::Rc::new(std::cell::RefCell::new(String::from("<Super>j")));
+
+    // Button that shows the human-readable current shortcut
+    let shortcut_btn = Button::builder()
+        .label("Super + J")
         .valign(gtk::Align::Center)
-        .width_request(150)
         .halign(gtk::Align::End)
         .build();
-    
+    shortcut_btn.add_css_class("flat");
+
     let shortcut_spacer = Box::new(Orientation::Horizontal, 0);
     shortcut_spacer.set_hexpand(true);
-    
+
     shortcut_card.append(&shortcut_text_box);
     shortcut_card.append(&shortcut_spacer);
-    shortcut_card.append(&shortcut_entry);
+    shortcut_card.append(&shortcut_btn);
     settings_box.append(&shortcut_card);
+
+    // Recorder dialog on button click
+    let shortcut_recorded_btn = shortcut_recorded.clone();
+    let shortcut_btn_clone = shortcut_btn.clone();
+    shortcut_btn.connect_clicked(move |_| {
+        // Get parent from thread-local — always reliable even on Wayland
+        let parent = crate::WINDOW.with(|w| w.borrow().clone());
+
+        // Use adw::Window so the compositor positions it over the parent
+        let dialog = AdwWindow::builder()
+            .modal(true)
+            .resizable(false)
+            .default_width(360)
+            .destroy_with_parent(true)
+            .build();
+        if let Some(p) = parent.as_ref() {
+            dialog.set_transient_for(Some(p));
+        }
+
+        // Content box inside a window-level Box with a HeaderBar
+        let outer = Box::new(Orientation::Vertical, 0);
+
+        // HeaderBar with Cancel (start) and Set (end)
+        let hbar = AdwHeaderBar::new();
+        hbar.set_show_end_title_buttons(false);
+        hbar.set_show_start_title_buttons(false);
+
+        let cancel_btn = Button::builder().label("Cancel").build();
+        cancel_btn.add_css_class("flat");
+
+        let set_btn = Button::builder().label("Set").build();
+        set_btn.add_css_class("suggested-action");
+        set_btn.set_sensitive(false);
+
+        hbar.pack_start(&cancel_btn);
+        hbar.pack_end(&set_btn);
+        outer.append(&hbar);
+
+        // Body
+        let vbox = Box::new(Orientation::Vertical, 12);
+        vbox.set_margin_top(20);
+        vbox.set_margin_bottom(28);
+        vbox.set_margin_start(24);
+        vbox.set_margin_end(24);
+        vbox.set_valign(gtk::Align::Center);
+        vbox.set_vexpand(true);
+
+        let title_lbl = Label::builder().label("Press a key combination").build();
+        title_lbl.add_css_class("title-4");
+
+        let hint_lbl = Label::builder()
+            .label("Requires Super, Ctrl, or Alt as a modifier")
+            .build();
+        hint_lbl.add_css_class("dim-label");
+        hint_lbl.add_css_class("caption");
+
+        let recording_lbl = Label::builder().label("Waiting for keys…").build();
+        recording_lbl.add_css_class("title-2");
+        recording_lbl.set_margin_top(20);
+        recording_lbl.set_margin_bottom(20);
+
+        vbox.append(&title_lbl);
+        vbox.append(&hint_lbl);
+        vbox.append(&recording_lbl);
+        outer.append(&vbox);
+        dialog.set_content(Some(&outer));
+
+        // Captured accel shared between key controller and Set button
+        let captured: std::rc::Rc<std::cell::RefCell<Option<String>>> =
+            std::rc::Rc::new(std::cell::RefCell::new(None));
+
+        let captured_key = captured.clone();
+        let recording_lbl_key = recording_lbl.clone();
+        let set_btn_key = set_btn.clone();
+        let dialog_key = dialog.clone();
+
+        let key_ctrl = EventControllerKey::new();
+        key_ctrl.connect_key_pressed(move |_, keyval, _code, state| {
+            use gtk::gdk;
+            // Escape = cancel
+            if keyval == gdk::Key::Escape {
+                dialog_key.close();
+                return glib::Propagation::Stop;
+            }
+            // Skip bare modifier presses
+            if matches!(keyval,
+                gdk::Key::Super_L | gdk::Key::Super_R |
+                gdk::Key::Control_L | gdk::Key::Control_R |
+                gdk::Key::Alt_L | gdk::Key::Alt_R |
+                gdk::Key::Shift_L | gdk::Key::Shift_R |
+                gdk::Key::Hyper_L | gdk::Key::Hyper_R |
+                gdk::Key::Meta_L | gdk::Key::Meta_R
+            ) { return glib::Propagation::Proceed; }
+
+            // Require at least one non-shift modifier
+            let has_mod = state.intersects(
+                gdk::ModifierType::SUPER_MASK |
+                gdk::ModifierType::CONTROL_MASK |
+                gdk::ModifierType::ALT_MASK,
+            );
+            if !has_mod {
+                recording_lbl_key.set_label("Add Super, Ctrl, or Alt");
+                return glib::Propagation::Stop;
+            }
+
+            // Build GTK accel string
+            let mut accel = String::new();
+            if state.contains(gdk::ModifierType::SUPER_MASK)   { accel.push_str("<Super>"); }
+            if state.contains(gdk::ModifierType::CONTROL_MASK) { accel.push_str("<Ctrl>");  }
+            if state.contains(gdk::ModifierType::ALT_MASK)     { accel.push_str("<Alt>");   }
+            if state.contains(gdk::ModifierType::SHIFT_MASK)   { accel.push_str("<Shift>"); }
+            if let Some(c) = keyval.to_unicode() {
+                accel.push(c.to_lowercase().next().unwrap_or(c));
+            } else if let Some(n) = keyval.name() {
+                accel.push_str(n.as_str());
+            }
+
+            *captured_key.borrow_mut() = Some(accel.clone());
+            recording_lbl_key.set_label(&gtk_to_human(&accel));
+            set_btn_key.set_sensitive(true);
+            glib::Propagation::Stop
+        });
+        dialog.add_controller(key_ctrl);
+
+        // Cancel
+        let dialog_cancel = dialog.clone();
+        cancel_btn.connect_clicked(move |_| { dialog_cancel.close(); });
+
+        // Set
+        let shortcut_recorded_set = shortcut_recorded_btn.clone();
+        let shortcut_btn_lbl = shortcut_btn_clone.clone();
+        let dialog_set = dialog.clone();
+        set_btn.connect_clicked(move |_| {
+            if let Some(accel) = captured.borrow().clone() {
+                *shortcut_recorded_set.borrow_mut() = accel.clone();
+                shortcut_btn_lbl.set_label(&gtk_to_human(&accel));
+            }
+            dialog_set.close();
+        });
+
+        dialog.present();
+    });
 
     // 3. History Limit Setting Card
     let limit_card = Box::new(Orientation::Horizontal, 12);
@@ -177,7 +345,8 @@ pub fn build_settings_view(
     let header_title_clone = header_title.clone();
     
     let autostart_switch_clone = autostart_switch.clone();
-    let shortcut_entry_clone = shortcut_entry.clone();
+    let shortcut_recorded_pref = shortcut_recorded.clone();
+    let shortcut_btn_pref = shortcut_btn.clone();
     let limit_entry_clone = limit_entry.clone();
 
     pref_action.connect_activate(move |_, _| {
@@ -187,13 +356,15 @@ pub fn build_settings_view(
                 .unwrap_or_else(|| "true".to_string());
             let shortcut_val = db::get_config_val(&conn, "shortcut")
                 .unwrap_or(None)
-                .unwrap_or_else(|| "<Super>v".to_string());
+                .unwrap_or_else(|| "<Super>j".to_string());
             let limit_val = db::get_config_val(&conn, "history_limit")
                 .unwrap_or(None)
                 .unwrap_or_else(|| "200".to_string());
 
             autostart_switch_clone.set_active(autostart_val == "true");
-            shortcut_entry_clone.set_text(&shortcut_val);
+            // Sync the backing store and update the button label
+            *shortcut_recorded_pref.borrow_mut() = shortcut_val.clone();
+            shortcut_btn_pref.set_label(&gtk_to_human(&shortcut_val));
             limit_entry_clone.set_text(&limit_val);
         }
 
@@ -236,15 +407,16 @@ pub fn build_settings_view(
     save_btn.connect_clicked(move |_| {
         let autostart_enabled = autostart_switch.is_active();
         let autostart_str = if autostart_enabled { "true" } else { "false" };
-        let shortcut_str = shortcut_entry.text().to_string();
+        // Read the GTK accel string directly from the backing store
+        let shortcut_gtk = shortcut_recorded.borrow().clone();
         let limit_str = limit_entry.text().to_string();
 
         if let Ok(conn) = db::init_db() {
             let _ = db::set_config_val(&conn, "autostart", autostart_str);
-            let _ = db::set_config_val(&conn, "shortcut", &shortcut_str);
+            let _ = db::set_config_val(&conn, "shortcut", &shortcut_gtk);
             let _ = db::set_config_val(&conn, "history_limit", &limit_str);
 
-            let _ = hotkey::update_gnome_shortcut(&shortcut_str);
+            let _ = hotkey::update_gnome_shortcut(&shortcut_gtk);
             let _ = set_autostart_enabled(autostart_enabled);
 
             if let Ok(limit) = limit_str.trim().parse::<usize>() {

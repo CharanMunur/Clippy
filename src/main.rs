@@ -7,6 +7,8 @@ thread_local! {
     static WINDOW: std::cell::RefCell<Option<ApplicationWindow>> = const { std::cell::RefCell::new(None) };
     static HOLD_GUARD: std::cell::RefCell<Option<gtk::gio::ApplicationHoldGuard>> = const { std::cell::RefCell::new(None) };
     static DIALOG_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    // Tracks whether the window is pinned always-on-top so we can re-apply after re-present
+    static WIN_PINNED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 mod db;
@@ -54,20 +56,8 @@ fn build_ui(app: &Application) -> ApplicationWindow {
         .card {
             border-radius: 6px;
             background-color: @card_bg_color;
-            border: 1px solid alpha(@window_fg_color, 0.08);
-            box-shadow: 0 2px 4px alpha(black, 0.03);
-        }
-        @media not (prefers-color-scheme: dark) {
-            .card {
-                border: 1.5px solid alpha(@window_fg_color, 0.14);
-                box-shadow: 0 2px 6px alpha(black, 0.06);
-            }
-            .settings-card {
-                border: 1.5px solid alpha(@window_fg_color, 0.12);
-            }
-            button.card.btn-delete-revealed {
-                border: 1.5px solid alpha(@window_fg_color, 0.10);
-            }
+            border: 1.5px solid alpha(@window_fg_color, 0.10);
+            box-shadow: 0 2px 4px alpha(black, 0.04);
         }
         .card.card-revealed {
             border-top-right-radius: 0px;
@@ -159,11 +149,8 @@ fn build_ui(app: &Application) -> ApplicationWindow {
         .resizable(false)
         .build();
 
-    // Intercept close request to hide the window instead of destroying it
-    window.connect_close_request(move |win| {
-        win.hide();
-        gtk::glib::Propagation::Stop
-    });
+    // Intercept close request: set up after pin_win_btn (done below)
+    // See connect_close_request further down
 
     // Create a Box to hold our widgets vertically
     let content = Box::new(Orientation::Vertical, 0);
@@ -199,18 +186,20 @@ fn build_ui(app: &Application) -> ApplicationWindow {
     pin_win_btn.add_css_class("dim-label");
 
     let pin_win_btn_clone = pin_win_btn.clone();
-    let is_win_pinned = std::rc::Rc::new(std::cell::Cell::new(false));
-    
+
     pin_win_btn.connect_clicked(move |_| {
-        let new_state = !is_win_pinned.get();
-        is_win_pinned.set(new_state);
-        
-        // Run wmctrl command to toggle always-on-top window manager state
+        let new_state = WIN_PINNED.with(|p| {
+            let v = !p.get();
+            p.set(v);
+            v
+        });
+
+        // Apply always-on-top via wmctrl
         let action = if new_state { "add" } else { "remove" };
         let _ = std::process::Command::new("wmctrl")
             .args(["-r", ":ACTIVE:", "-b", &format!("{},above", action)])
             .status();
-        
+
         if new_state {
             pin_win_btn_clone.add_css_class("suggested-action");
             pin_win_btn_clone.remove_css_class("dim-label");
@@ -224,6 +213,23 @@ fn build_ui(app: &Application) -> ApplicationWindow {
         }
     });
     header_bar.pack_start(&pin_win_btn);
+
+    // Intercept close request: hide window and reset pin state
+    let pin_reset_btn = pin_win_btn.clone();
+    window.connect_close_request(move |win| {
+        if WIN_PINNED.with(|p| p.get()) {
+            WIN_PINNED.with(|p| p.set(false));
+            let _ = std::process::Command::new("wmctrl")
+                .args(["-r", ":ACTIVE:", "-b", "remove,above"])
+                .status();
+            pin_reset_btn.remove_css_class("suggested-action");
+            pin_reset_btn.add_css_class("dim-label");
+            pin_reset_btn.set_icon_name("clippy-pin-symbolic");
+            pin_reset_btn.set_tooltip_text(Some("Pin window (always on top)"));
+        }
+        win.hide();
+        gtk::glib::Propagation::Stop
+    });
 
     // Create GMenu for the MenuButton
     let menu = gio::Menu::new();
@@ -434,7 +440,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
             .message_type(gtk::MessageType::Info)
             .buttons(gtk::ButtonsType::Close)
             .text("Keyboard Shortcuts")
-            .secondary_text("Global Shortcuts:\n  • Toggle Window: Configure in Settings (Default: <Super>v)\n\nIn-App Actions:\n  • Copy Item: Left Click on Card\n  • Pin Item: Click Pin Button on Card\n  • Delete Item: Click '...' and select Delete (Bin)")
+            .secondary_text("Global Shortcuts:\n  • Toggle Window:  Super + J  (default)\n      Change it: ☰ Menu → Preferences → Global Shortcut → click to record\n\nIn-App Actions:\n  • Copy item         Left-click any card\n  • Pin / Unpin       Click the pin icon on a card\n  • Open actions      Click ··· on a card\n  • Delete item       Open ··· → click the bin\n  • Always on top     Click the pin icon in the header\n  • Search            Type in the search bar (250 ms debounce)")
             .build();
 
         dialog.connect_response(|dialog, _| {
@@ -464,8 +470,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
             .website_label("GitHub Repository")
             .build();
         about.set_authors(&["Charan Munur"]);
-        // Re-using translator_credits field to show developer website
-        about.set_translator_credits(Some("Website: https://www.charanmunur.in"));
+        about.add_credit_section("Developer Portfolio", &["https://www.charanmunur.in"]);
 
         about.connect_destroy(|_| {
             DIALOG_OPEN.with(|f| f.set(false));
@@ -478,7 +483,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
     if let Ok(conn) = db::init_db() {
         let shortcut = db::get_config_val(&conn, "shortcut")
             .unwrap_or(None)
-            .unwrap_or_else(|| "<Super>v".to_string());
+            .unwrap_or_else(|| "<Super>j".to_string());
         let autostart_val = db::get_config_val(&conn, "autostart")
             .unwrap_or(None)
             .unwrap_or_else(|| "true".to_string());
@@ -525,7 +530,12 @@ fn main() {
                 // Secondary instance launched, handle toggle/present signals
                 if is_toggle {
                     if win.is_visible() {
-                        win.hide();
+                        // Reset pin before hiding
+                        if WIN_PINNED.with(|p| p.get()) {
+                            win.close(); // triggers connect_close_request which resets pin
+                        } else {
+                            win.hide();
+                        }
                     } else {
                         win.present();
                     }

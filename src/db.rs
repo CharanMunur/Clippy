@@ -92,7 +92,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )?;
 
     conn.execute(
-        "INSERT OR IGNORE INTO clippy_config (key, value) VALUES ('shortcut', '<Super>v')",
+        "INSERT OR IGNORE INTO clippy_config (key, value) VALUES ('shortcut', '<Super>j')",
         [],
     )?;
 
