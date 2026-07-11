@@ -35,7 +35,7 @@ Clippy is a lightweight clipboard history manager built natively in Rust using G
 | Local only | No cloud, no sync, no telemetry |
 
 
-## 📸 Screenshots
+## Screenshots
 
 <div align="center">
   <table>
@@ -86,7 +86,7 @@ Fedora:
 sudo dnf install gtk4-devel libadwaita-devel pkg-config
 ```
 
-### Install
+### Install from Source
 
 ```bash
 git clone https://github.com/CharanMunur/Clippy.git
@@ -100,13 +100,42 @@ This builds a release binary, installs it to `~/.local/bin`, and registers the a
 ./install.sh --no-autostart
 ```
 
-### Uninstall
+To uninstall the source installation:
 
 ```bash
 ./uninstall.sh
 ```
 
----
+### Debian / Ubuntu (.deb) Package
+
+Download the `.deb` package from [Releases](https://github.com/CharanMunur/Clippy/releases) and install it using:
+
+```bash
+sudo dpkg -i clippy_0.1.0_amd64.deb
+
+# If there are missing dependencies:
+sudo apt install -f
+```
+
+To uninstall:
+
+```bash
+sudo apt remove clippy
+```
+
+### Fedora / RHEL (.rpm) Package
+
+Download the `.rpm` package from [Releases](https://github.com/CharanMunur/Clippy/releases) and install it using:
+
+```bash
+sudo dnf install clippy-0.1.0-1.x86_64.rpm
+```
+
+To uninstall:
+
+```bash
+sudo dnf remove clippy
+```
 
 ## Running Locally (Development)
 
@@ -167,17 +196,6 @@ Configuration is stored in the local SQLite database at `~/.local/share/clippy/c
 - Global hotkey
 - History limit
 - Autostart on login
-
----
-
-## Contributing
-
-Open an issue to discuss a change before starting significant work, or submit a pull request directly for small fixes.
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feat/your-feature`
-3. Commit your changes: `git commit -m "feat: add your feature"`
-4. Push and open a pull request
 
 ---
 
