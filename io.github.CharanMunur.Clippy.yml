@@ -41,7 +41,8 @@ modules:
       - install -Dm644 icons/hicolor/scalable/actions/clippy-pin-symbolic.svg /app/share/icons/hicolor/scalable/actions/clippy-pin-symbolic.svg
       - install -Dm644 icons/hicolor/scalable/actions/clippy-pin-active-symbolic.svg /app/share/icons/hicolor/scalable/actions/clippy-pin-active-symbolic.svg
     sources:
-      - type: dir
-        path: .
+      - type: git
+        url: https://github.com/CharanMunur/Clippy.git
+        tag: v0.1.0
       # Cargo sources (downloaded offline) will be appended here by the flathub builder
       - cargo-sources.json
