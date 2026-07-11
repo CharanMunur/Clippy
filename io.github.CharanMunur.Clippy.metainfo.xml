@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.CharanMunur.Clippy</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Clippy</name>
+  <summary>A native, privacy-first clipboard manager for GNOME</summary>
+
+  <description>
+    <p>
+      Clippy is a lightweight and modern clipboard manager built specifically for GNOME and Linux.
+      Written natively in Rust using GTK4 and libadwaita, it integrates seamlessly into the GNOME desktop environment,
+      following the GNOME Human Interface Guidelines.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Automatically captures copied text and image history</li>
+      <li>Vibrant light/dark themes supporting system accent colors</li>
+      <li>Native drag-and-drop support for pasting text and files directly into other apps</li>
+      <li>Configurable global shortcut with an interactive key recorder</li>
+      <li>Always-on-top window pinning to float above other applications</li>
+      <li>Secure and private local SQLite database storage</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.CharanMunur.Clippy.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The main clipboard history list displaying text and image preview cards.</caption>
+      <image>https://raw.githubusercontent.com/CharanMunur/Clippy/master/assets/clippy-img-1.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The preferences panel showing shortcut, autostart, and limit configurations.</caption>
+      <image>https://raw.githubusercontent.com/CharanMunur/Clippy/master/assets/clippy-img-2.png</image>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/CharanMunur/Clippy</url>
+  <url type="bugtracker">https://github.com/CharanMunur/Clippy/issues</url>
+  <url type="vcs-browser">https://github.com/CharanMunur/Clippy</url>
+
+  <developer_name>Charan Munur</developer_name>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2026-07-11">
+      <description>
+        <p>Initial stable release of Clippy:</p>
+        <ul>
+          <li>Interactive global shortcut recorder</li>
+          <li>System accent color integration and light/dark styling</li>
+          <li>Local history SQLite storage with custom limits</li>
+          <li>Always-on-top toggle</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

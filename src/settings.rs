@@ -44,12 +44,12 @@ pub fn set_autostart_enabled(enabled: bool) -> std::io::Result<()> {
                  Name=Clippy\n\
                  Comment=A native clipboard manager for GNOME/Linux\n\
                  Exec={}\n\
-                 Icon=clippy\n\
+                 Icon=io.github.CharanMunur.Clippy\n\
                  Terminal=false\n\
                  Hidden=false\n\
                  NoDisplay=false\n\
                  X-GNOME-Autostart-enabled=true\n\
-                 StartupWMClass=org.gnome.Clippy\n",
+                 StartupWMClass=io.github.CharanMunur.Clippy\n",
                 exec_path
             );
             std::fs::write(&autostart_file, desktop_content)?;

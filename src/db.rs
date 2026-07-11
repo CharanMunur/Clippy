@@ -40,7 +40,7 @@ pub struct ClipboardEntry {
 
 /// Helper function to return the application's XDG data directory path.
 pub fn get_data_dir() -> PathBuf {
-    if let Some(proj_dirs) = ProjectDirs::from("org", "gnome", "Clippy") {
+    if let Some(proj_dirs) = ProjectDirs::from("io", "github", "CharanMunur.Clippy") {
         proj_dirs.data_dir().to_path_buf()
     } else {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());

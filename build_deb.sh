@@ -25,11 +25,11 @@ echo -e "${BLUE}▸ Copying files to package directory...${NC}"
 cp "target/release/clippy" "$PKG_DIR/usr/bin/clippy"
 chmod 755 "$PKG_DIR/usr/bin/clippy"
 
-cp "org.gnome.Clippy.desktop" "$PKG_DIR/usr/share/applications/org.gnome.Clippy.desktop"
-chmod 644 "$PKG_DIR/usr/share/applications/org.gnome.Clippy.desktop"
+cp "io.github.CharanMunur.Clippy.desktop" "$PKG_DIR/usr/share/applications/io.github.CharanMunur.Clippy.desktop"
+chmod 644 "$PKG_DIR/usr/share/applications/io.github.CharanMunur.Clippy.desktop"
 
-cp "assets/clippy.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/org.gnome.Clippy.png"
-chmod 644 "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/org.gnome.Clippy.png"
+cp "assets/clippy.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/io.github.CharanMunur.Clippy.png"
+chmod 644 "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/io.github.CharanMunur.Clippy.png"
 
 cp "icons/hicolor/scalable/actions/clippy-pin-symbolic.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/actions/clippy-pin-symbolic.svg"
 cp "icons/hicolor/scalable/actions/clippy-pin-active-symbolic.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/actions/clippy-pin-active-symbolic.svg"

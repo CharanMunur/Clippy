@@ -464,7 +464,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
             .transient_for(&win_clone)
             .modal(true)
             .program_name("Clippy")
-            .logo_icon_name("org.gnome.Clippy")
+            .logo_icon_name("io.github.CharanMunur.Clippy")
             .version("0.1.0")
             .comments("A native clipboard manager for GNOME/Linux")
             .website("https://github.com/CharanMunur/Clippy")
@@ -498,7 +498,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
 
 fn main() {
     let application = Application::builder()
-        .application_id("org.gnome.Clippy")
+        .application_id("io.github.CharanMunur.Clippy")
         .flags(gtk::gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
