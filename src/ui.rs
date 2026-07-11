@@ -285,6 +285,7 @@ pub fn build_row(
     let card_clone = card.clone();
     let delete_btn_clone = delete_btn.clone();
     let list_box_clone = list_box.clone();
+    let is_text = entry.text_content.is_some();
     more_btn.connect_clicked(move |_| {
         let is_revealed = action_revealer_clone.reveals_child();
         
@@ -342,10 +343,8 @@ pub fn build_row(
         action_revealer_clone.set_reveal_child(!is_revealed);
         if !is_revealed {
             more_btn_clone.add_css_class("suggested-action");
-            let h = card_clone.height();
-            
-            // Set button width = card height → perfect squares
-            delete_btn_clone.set_width_request(h);
+            let target_w = if is_text { 98 } else { 110 };
+            delete_btn_clone.set_width_request(target_w);
             
             // Apply capsule corner styling
             card_clone.add_css_class("card-revealed");
