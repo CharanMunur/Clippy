@@ -134,12 +134,39 @@ pub fn build_row(
             .build();
         left_col.append(&label);
     } else if let Some(path) = &entry.image_path {
-        let picture = Picture::for_filename(path);
-        picture.set_height_request(100);
-        picture.set_can_shrink(true);
-        picture.set_halign(gtk::Align::Start);
-        picture.set_valign(gtk::Align::Center);
-        left_col.append(&picture);
+        let file = gtk::gio::File::for_path(path);
+        if let Ok(texture) = gtk::gdk::Texture::from_file(&file) {
+            let img_w = texture.width() as f64;
+            let img_h = texture.height() as f64;
+            let aspect = img_w / img_h;
+            let target_h = 80.0;
+            // Bound target width to max 200px to prevent card horizontal overflow
+            let target_w = (target_h * aspect).min(200.0);
+
+            let picture = Picture::for_paintable(&texture);
+            picture.set_height_request(target_h as i32);
+            picture.set_width_request(target_w as i32);
+            picture.set_can_shrink(true);
+            picture.set_halign(gtk::Align::Start);
+            picture.set_valign(gtk::Align::Center);
+
+            // Wrap in a horizontal box to force left-alignment in vertical left_col
+            let img_wrapper = Box::new(Orientation::Horizontal, 0);
+            img_wrapper.set_halign(gtk::Align::Start);
+            img_wrapper.append(&picture);
+            left_col.append(&img_wrapper);
+        } else {
+            let picture = Picture::for_filename(path);
+            picture.set_height_request(80);
+            picture.set_can_shrink(true);
+            picture.set_halign(gtk::Align::Start);
+            picture.set_valign(gtk::Align::Center);
+
+            let img_wrapper = Box::new(Orientation::Horizontal, 0);
+            img_wrapper.set_halign(gtk::Align::Start);
+            img_wrapper.append(&picture);
+            left_col.append(&img_wrapper);
+        }
     }
 
     // Bottom spacer inside left column to push timestamp to the bottom, aligning with right-col pin button
