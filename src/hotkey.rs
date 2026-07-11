@@ -50,7 +50,9 @@ pub fn update_gnome_shortcut(binding: &str) -> std::io::Result<()> {
         let path_arg = format!("org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{}", clippy_path);
         let _ = Command::new("gsettings").args(["set", &path_arg, "name", "Clippy Toggle"]).status();
         
-        let exec_path = format!("{}/.local/bin/clippy --toggle", std::env::var("HOME").unwrap_or_default());
+        let current_exe = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("/usr/bin/clippy"));
+        let exec_path = format!("{} --toggle", current_exe.to_string_lossy());
         let _ = Command::new("gsettings").args(["set", &path_arg, "command", &exec_path]).status();
         let _ = Command::new("gsettings").args(["set", &path_arg, "binding", binding]).status();
     }

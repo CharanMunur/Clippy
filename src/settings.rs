@@ -34,21 +34,23 @@ pub fn set_autostart_enabled(enabled: bool) -> std::io::Result<()> {
         let autostart_file = autostart_dir.join("clippy.desktop");
         
         if enabled {
-            let install_bin = format!("{}/.local/bin/clippy", std::env::var("HOME").unwrap_or_default());
+            let current_exe = std::env::current_exe()
+                .unwrap_or_else(|_| std::path::PathBuf::from("/usr/bin/clippy"));
+            let exec_path = format!("{} --background", current_exe.to_string_lossy());
             let desktop_content = format!(
                 "[Desktop Entry]\n\
                  Version=1.0\n\
                  Type=Application\n\
                  Name=Clippy\n\
                  Comment=A native clipboard manager for GNOME/Linux\n\
-                 Exec={} --background\n\
+                 Exec={}\n\
                  Icon=clippy\n\
                  Terminal=false\n\
                  Hidden=false\n\
                  NoDisplay=false\n\
                  X-GNOME-Autostart-enabled=true\n\
                  StartupWMClass=org.gnome.Clippy\n",
-                install_bin
+                exec_path
             );
             std::fs::write(&autostart_file, desktop_content)?;
         } else {
@@ -66,6 +68,7 @@ pub fn build_settings_view(
     stack: &Stack,
     list_box: &ListBox,
     search_entry: &SearchEntry,
+    sub_header: &Box,
     menu_button: &MenuButton,
     pin_win_btn: &Button,
     back_btn: &Button,
@@ -348,6 +351,8 @@ pub fn build_settings_view(
     let shortcut_recorded_pref = shortcut_recorded.clone();
     let shortcut_btn_pref = shortcut_btn.clone();
     let limit_entry_clone = limit_entry.clone();
+    let search_entry_clone_pref = search_entry.clone();
+    let sub_header_clone_pref = sub_header.clone();
 
     pref_action.connect_activate(move |_, _| {
         if let Ok(conn) = db::init_db() {
@@ -369,6 +374,8 @@ pub fn build_settings_view(
         }
 
         stack_clone.set_visible_child_name("settings");
+        search_entry_clone_pref.set_visible(false);
+        sub_header_clone_pref.set_visible(false);
         menu_button_clone.set_visible(false);
         pin_win_btn_clone.set_visible(false);
         back_btn_clone.set_visible(true);
@@ -384,9 +391,12 @@ pub fn build_settings_view(
     let header_title_clone_back = header_title.clone();
     let list_box_clone_back = list_box.clone();
     let search_entry_clone_back = search_entry.clone();
+    let sub_header_clone_back = sub_header.clone();
     let refresh_list_fn_back = refresh_list_fn.clone();
 
     back_btn.connect_clicked(move |_| {
+        search_entry_clone_back.set_visible(true);
+        sub_header_clone_back.set_visible(true);
         refresh_list_fn_back(&list_box_clone_back, &stack_clone_back, &search_entry_clone_back);
         menu_button_clone_back.set_visible(true);
         pin_win_btn_clone_back.set_visible(true);
@@ -402,6 +412,7 @@ pub fn build_settings_view(
     let header_title_clone_save = header_title.clone();
     let list_box_clone_save = list_box.clone();
     let search_entry_clone_save = search_entry.clone();
+    let sub_header_clone_save = sub_header.clone();
     let refresh_list_fn_save = refresh_list_fn;
 
     save_btn.connect_clicked(move |_| {
@@ -425,6 +436,8 @@ pub fn build_settings_view(
         }
 
         refresh_list_fn_save(&list_box_clone_save, &stack_clone_save, &search_entry_clone_save);
+        search_entry_clone_save.set_visible(true);
+        sub_header_clone_save.set_visible(true);
         menu_button_clone_save.set_visible(true);
         pin_win_btn_clone_save.set_visible(true);
         back_btn_clone_save.set_visible(false);

@@ -25,11 +25,11 @@ echo -e "${BLUE}▸ Copying files to package directory...${NC}"
 cp "target/release/clippy" "$PKG_DIR/usr/bin/clippy"
 chmod 755 "$PKG_DIR/usr/bin/clippy"
 
-cp "clippy.desktop" "$PKG_DIR/usr/share/applications/clippy.desktop"
-chmod 644 "$PKG_DIR/usr/share/applications/clippy.desktop"
+cp "org.gnome.Clippy.desktop" "$PKG_DIR/usr/share/applications/org.gnome.Clippy.desktop"
+chmod 644 "$PKG_DIR/usr/share/applications/org.gnome.Clippy.desktop"
 
-cp "assets/clippy.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/clippy.png"
-chmod 644 "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/clippy.png"
+cp "assets/clippy.png" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/org.gnome.Clippy.png"
+chmod 644 "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/org.gnome.Clippy.png"
 
 cp "icons/hicolor/scalable/actions/clippy-pin-symbolic.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/actions/clippy-pin-symbolic.svg"
 cp "icons/hicolor/scalable/actions/clippy-pin-active-symbolic.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/actions/clippy-pin-active-symbolic.svg"

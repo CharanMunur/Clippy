@@ -325,6 +325,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
         &stack,
         &list_box,
         &search_entry,
+        &sub_header,
         &menu_button,
         &pin_win_btn,
         &back_btn,
@@ -463,7 +464,7 @@ fn build_ui(app: &Application) -> ApplicationWindow {
             .transient_for(&win_clone)
             .modal(true)
             .program_name("Clippy")
-            .logo_icon_name("clippy")
+            .logo_icon_name("org.gnome.Clippy")
             .version("0.1.0")
             .comments("A native clipboard manager for GNOME/Linux")
             .website("https://github.com/CharanMunur/Clippy")
