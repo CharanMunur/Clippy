@@ -62,20 +62,33 @@ pub fn start_clipboard_poller(refresh_tx: Sender<()>) {
         println!("Clipboard poller thread started. Initial hash: {}", last_seen_hash);
 
         loop {
-            // Sync last_seen_hash with the absolute latest database entry (ignoring pinned ordering)
-            // Only sync if the database entry is strictly newer than our last seen time (prevents syncing back to older pinned items on Clear all)
-            if let Ok((h, time_str)) = conn.query_row::<(String, String), _, _>(
+            // Sync last_seen_hash with the absolute latest database entry.
+            // If the database is empty (e.g. after Clear all), reset to empty hash and epoch time.
+            let db_latest = match conn.query_row::<(String, String), _, _>(
                 "SELECT content_hash, created_at FROM clippy_history ORDER BY created_at DESC LIMIT 1",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-                && let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
-                    let dt_utc = dt.with_timezone(&Utc);
-                    if dt_utc > last_seen_time {
-                        last_seen_hash = h;
-                        last_seen_time = dt_utc;
+            ) {
+                Ok((h, time_str)) => {
+                    if let Ok(dt) = DateTime::parse_from_rfc3339(&time_str) {
+                        Some((h, dt.with_timezone(&Utc)))
+                    } else {
+                        None
                     }
                 }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    // Database is empty - reset last seen state
+                    Some((String::new(), DateTime::from_timestamp(0, 0).unwrap().with_timezone(&Utc)))
+                }
+                Err(_) => None,
+            };
+
+            if let Some((h, dt_utc)) = db_latest {
+                if h != last_seen_hash || dt_utc != last_seen_time {
+                    last_seen_hash = h;
+                    last_seen_time = dt_utc;
+                }
+            }
 
             let mut changed = false;
 

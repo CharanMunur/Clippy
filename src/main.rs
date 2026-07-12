@@ -351,6 +351,15 @@ fn build_ui(app: &Application) -> ApplicationWindow {
     clear_all_btn.connect_clicked(move |_| {
         if let Ok(conn) = db::init_db() {
             let _ = db::clear_unpinned_entries(&conn);
+            
+            // Sync clipboard to the new latest entry (which would be a remaining pinned entry, or clear if empty)
+            let entries = db::get_entries(&conn, None).unwrap_or_default();
+            if let Some(first_entry) = entries.first() {
+                ui::copy_to_clipboard(first_entry);
+            } else {
+                ui::clear_clipboard();
+            }
+
             ui::refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
         }
     });

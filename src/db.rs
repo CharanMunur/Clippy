@@ -114,6 +114,7 @@ pub fn init_db() -> Result<Connection> {
 
     let db_path = data_dir.join("clippy.db");
     let conn = Connection::open(db_path)?;
+    conn.busy_timeout(std::time::Duration::from_millis(5000))?;
     create_schema(&conn)?;
 
     Ok(conn)

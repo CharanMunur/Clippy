@@ -40,6 +40,14 @@ pub fn copy_to_clipboard(entry: &ClipboardEntry) {
     }
 }
 
+pub fn clear_clipboard() {
+    if let Some(display) = gtk::gdk::Display::default() {
+        let clipboard = display.clipboard();
+        clipboard.set_text("");
+        println!("Cleared system clipboard");
+    }
+}
+
 pub fn build_row(
     entry: &ClipboardEntry,
     list_box: &ListBox,
@@ -373,6 +381,15 @@ pub fn build_row(
         glib::timeout_add_local_once(std::time::Duration::from_millis(250), move || {
             if let Ok(conn) = db::init_db() {
                 let _ = db::delete_entry(&conn, entry_id);
+                
+                // Keep system clipboard in sync with the new top entry
+                let entries = db::get_entries(&conn, None).unwrap_or_default();
+                if let Some(first_entry) = entries.first() {
+                    copy_to_clipboard(first_entry);
+                } else {
+                    clear_clipboard();
+                }
+
                 refresh_list(&list_box_clone, &stack_clone, &search_entry_clone);
             }
         });
